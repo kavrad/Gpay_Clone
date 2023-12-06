@@ -1,5 +1,7 @@
 //import user model
+const Transaction = require("../models/Transaction");
 const User = require("../models/User");
+
 const {startSession}=require("mongoose")
 
 //transaction controller
@@ -67,28 +69,42 @@ exports.transaction=async (req,res)=>{
         //subtract the amount from the sender
         sender.wallet=sender.wallet-amount;
 
-        //Also insert the reciever id in reciver array
-        if(!sender.reciever.includes(recipientUser._id)) sender.reciever.push(recipientUser._id)
-        
-        await sender.save();
         
         //add the amount to the recipient account
         recipientUser.wallet = recipientUser.wallet + amount
         
-        //also insert the sender id in reciever array
-        if(!recipientUser.sender.includes(sender._id)) recipientUser.sender.push(sender._id)
-       
         await recipientUser.save();
 
         console.log("SENDER WALLET -> ",sender.wallet);
         console.log("RECIEVER WALLET",recipientUser.wallet)
-        
+
+        const transactionDetails=await Transaction.create({
+            amount:amount,
+            sender:sender._id,
+            reciever:recipientUser._id,
+        })
+
+        await Transaction.updateOne({_id:transactionDetails._id},{
+            $currentDate:{
+                payment_at:true
+            }
+        },{
+            new:true
+        })
+        sender.recentTransaction=transactionDetails._id
+        await sender.save();
+
+        const transactionData=await Transaction.findById(transactionDetails._id).populate("sender reciever").exec()
+        let data={transactionid:transactionData._id,...transactionData}
+
         await session.commitTransaction();
         session.endSession();
 
         res.status(200).json({
             success:true,
-            message:"Transaction sucessfull!!"
+            data:data,
+            message:"Transaction sucessfull!!",
+
         })
 
     } catch (error) {
@@ -110,14 +126,15 @@ exports.cashback=async (req,res)=>{
     
     try {
         //find if sender exists or not
-      const sender=await User.findById(req.user)
+        const userData=await Transaction.findOne({sender:req.user}).populate("sender reciever",{
+            wallet:true
+        }).exec()
 
-      //find if reciever exists or not
-      const reciever=await User.findById(sender.reciever.at(-1))
-      console.log("SENDER",sender)
-      console.log("RECIEVER",reciever)
 
-      const amount=sender.wallet
+      console.log("USER DATA",userData)
+      
+
+      const amount=userData.sender.wallet
       
       //if amount is not a multiple of 500 return a response
       if(amount % 500 === 0){
@@ -129,37 +146,44 @@ exports.cashback=async (req,res)=>{
       
       //if amount is less than 1000 provide 5% cashback
       if(amount < 1000){
-        let cashback=reciever.wallet - (5/100*reciever.wallet) 
+        let cashback=userData.reciever.wallet - (5/100*userData.reciever.wallet) 
         console.log("CASHBACK",cashback)
-        reciever.wallet=cashback;
-        await reciever.save()
-        console.log("RECUEVER WALLET",reciever)
+        userData.reciever.wallet=cashback;
+        
+       const updateReciever= await User.findByIdAndUpdate(userData.reciever._id,{wallet:cashback},{new:true})
 
         const addToSender=sender.wallet+cashback
-        sender.wallet=addToSender
-        await sender.save()
+        userData.sender.wallet=addToSender
+        const updateSender=await User.findByIdAndUpdate(userData.sender._id,{wallet:addToSender},{new:true})
+        
+        console.log("UPDATE SENDER ->",updateSender);
+        console.log("UPDATE RECIEVER -> ",updateReciever)
 
         return res.json({
             message:"5% cashback",
-            cashbackDetails:sender,
-            currentBalance:sender.wallet
+            cashbackDetails:updateSender,
+            currentBalance:updateSender.wallet
         })
       }
        
-      //if amount is greater than 500 provide 2% cashback
+    //   //if amount is greater than 500 provide 2% cashback
       if(amount > 1000){
-        let cashback=reciever.wallet - (2/100*reciever.wallet);
-        reciever.wallet=cashback
-        await reciever.save();
+        let cashback=userData.reciever.wallet - (2/100*userData.reciever.wallet);
+        userData.reciever.wallet=cashback
+        const updateReciever=await User.findByIdAndUpdate(userData.reciever._id,{wallet:cashback},{new:true})
 
-        const addToSender=sender.wallet+cashback
-        sender.wallet=addToSender
-        await sender.save()
+        const addToSender=userData.sender.wallet+cashback
+        userData.sender.wallet=addToSender
+        
+        const updateSender=await User.findByIdAndUpdate(userData.sender._id,{wallet:addToSender},{new:true})
+
+        console.log("UPDATE SENDER ->",updateSender);
+        console.log("UPDATE RECIEVER -> ",updateReciever)
 
         return res.json({
             message:"2% cahback",
-            cashbackDetails:sender,
-            currentBalance:sender.wallet
+            cashbackDetails:updateSender,
+            currentBalance:updateSender.wallet
         })
       }
 
