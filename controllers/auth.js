@@ -157,8 +157,9 @@ exports.login=async (req,res)=>{
               
             },
             $inc:{
-              wallet:req.body.wallet,
+              wallet:req.body.wallet
             }
+            
           },{new:true,session:session})
         }
 
