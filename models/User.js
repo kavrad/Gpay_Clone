@@ -30,18 +30,12 @@ const usersSchema=new mongoose.Schema({
   },
   wallet:{
     type:Number,
-    default:0.0,
+    default:0.0
   },
-  sender:[{
+  recentTransaction:{
     type:mongoose.Schema.Types.ObjectId,
-    ref:"User"
-  }],
-  reciever:[
-    {
-      type:mongoose.Schema.Types.ObjectId,
-      ref:"User"
-    }
-  ]
+    ref:"Transaction"
+  }
 })
 
 
